@@ -1,13 +1,21 @@
+import streamlit as st
 import matplotlib.pyplot as plt
 
-def plot_gastos_por_categoria(df):
-    gastos = df[df["Tipo"] == "Gasto"]
-    if gastos.empty:
-        return None
+def show_summary(df):
+    if df.empty:
+        st.info("Aún no hay activos registrados.")
+        return
 
-    categoria = gastos.groupby("Categoría")["Monto"].sum().abs()
+    total = df["Valor"].sum()
+    st.metric("💼 Valor total del portafolio", f"${total:,.2f}")
+
+def show_value_by_type(df):
+    if df.empty:
+        return
+
+    resumen = df.groupby("Tipo")["Valor"].sum().sort_values()
     fig, ax = plt.subplots()
-    categoria.plot(kind="bar", ax=ax, color="tomato")
-    ax.set_ylabel("Monto ($)")
-    ax.set_title("Gastos por categoría")
-    return fig
+    resumen.plot(kind="barh", ax=ax, color="skyblue")
+    ax.set_title("Distribución por tipo de activo")
+    ax.set_xlabel("Valor en MXN")
+    st.pyplot(fig)
