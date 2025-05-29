@@ -1,24 +1,28 @@
 import streamlit as st
 import pandas as pd
-from data_storage import load_data, save_data
-from assets_handler import add_asset_form
-from visualizations import show_summary, show_value_by_type
+from utils import add_asset_form, agregar_valor_actual
+from visualizations import show_summary, show_value_by_type, show_sector_distribution,simulate_portfolio_history
+import datetime 
+
 
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 st.title("📈 Tracker de Portafolio Personal")
 
 
-# Carga los datos guardados
-data = load_data()
+# Cargar CSV
+try:
+    data = pd.read_csv("portafolio.csv", parse_dates=["Fecha"])
+except FileNotFoundError:
+    data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio","Plataforma"])
+
 
 # Sidebar: Formulario para agregar nuevo activo
 with st.sidebar:
-    st.header("➕ Agregar activo")
     new_entry = add_asset_form()
     if new_entry:
         data = pd.concat([data, pd.DataFrame([new_entry])], ignore_index=True)
-        data["Fecha"] = pd.to_datetime(data["Fecha"], errors="coerce")  # <- Fuerza el tipo datetime
-        save_data(data)
+        data["Fecha"] = pd.to_datetime(data["Fecha"],errors='coerce')
+        data.to_csv("portafolio.csv", index=False)
         st.success("Activo agregado con éxito")
 
 
@@ -30,7 +34,17 @@ if data is not None and not data.empty:
     st.subheader("📋 Activos registrados")
 
 
+    # Cálculo de valores actuales
+    data = agregar_valor_actual(data)
+    
+
+    # Visualizaciones
     show_summary(data)
     show_value_by_type(data)
+    show_sector_distribution(data)
+    simulate_portfolio_history(data)
+
+    
+
 else:
     st.warning("No hay datos disponibles. Por favor, agrega activos en la barra lateral.")

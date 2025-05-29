@@ -7,7 +7,7 @@ def load_data():
     if DATA_PATH.exists():
         return pd.read_csv(DATA_PATH, parse_dates=["Fecha"])
     else:
-        return pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio","Plataforma"])
+        return pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio","Plataforma","Sector"])
 
 def save_data(df):
     df.to_csv(DATA_PATH, index=False)

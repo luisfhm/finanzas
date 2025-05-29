@@ -84,3 +84,13 @@ def add_asset_form():
             "Plataforma": plataforma  
         }
     return None
+
+def obtener_precios_actuales_unicos(data):
+    precios_actuales = {}
+    for _, row in data.iterrows():
+        ticker = row["Activo"]
+        tipo = row["Tipo"]
+        if ticker not in precios_actuales:
+            precio_actual = obtener_precio_tiempo_real(tipo, ticker)
+            precios_actuales[ticker] = precio_actual if precio_actual else 0
+    return precios_actuales
