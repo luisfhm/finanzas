@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from utils import add_asset_form, agregar_valor_actual
-from visualizations import show_summary, show_value_by_type, show_sector_distribution,simulate_portfolio_history
+from utils import add_asset_form, agregar_valor_actual,tiene_conexion
+from visualizations import show_summary, show_sector_distribution,simulate_portfolio_history
 import datetime 
 
 
@@ -15,6 +15,8 @@ try:
 except FileNotFoundError:
     data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio","Plataforma"])
 
+if not tiene_conexion():
+    st.warning("⚠️ Estás sin conexión. Algunas funciones como obtener precios o simulaciones no estarán disponibles.")
 
 # Sidebar: Formulario para agregar nuevo activo
 with st.sidebar:
@@ -40,10 +42,11 @@ if data is not None and not data.empty:
 
     # Visualizaciones
     show_summary(data)
-    show_value_by_type(data)
-    show_sector_distribution(data)
-    simulate_portfolio_history(data)
+    #show_value_by_type(data)
 
+    if tiene_conexion():
+        show_sector_distribution(data)
+    simulate_portfolio_history(data)
     
 
 else:

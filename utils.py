@@ -3,6 +3,17 @@ import yfinance as yf
 import requests
 import pandas as pd
 
+import requests
+
+def tiene_conexion():
+    """Verifica si hay conexión a internet."""
+    try:
+        requests.get("https://finance.yahoo.com", timeout=5)
+        return True
+    except requests.RequestException:
+        return False
+
+
 def obtener_tipo_cambio_usd_mxn():
     ticker_fx = yf.Ticker("USDMXN=X")
     return ticker_fx.info.get("regularMarketPrice", 20.0)
@@ -42,9 +53,20 @@ def obtener_precio_tiempo_real(tipo, ticker):
 def add_asset_form():
     st.subheader("➕ Agregar nuevo activo")
 
-    tipo = st.selectbox("Tipo de activo", ["Acción/ETF", "Cripto", "Bono", "Otro"])
-    ticker = st.text_input(f"Ingrese ticker del {tipo}")
-    realtime = st.checkbox("Obtener precio en tiempo real")
+    tipo = st.selectbox("Tipo de activo", ["Acción/ETF", "Cripto", "CETES","Inmueble", "Otro"])
+    ticker = st.text_input(f"Ingrese nombre o ticker ticker de {tipo}")
+
+    usar_precio_rt=tipo in ["Acción/ETF","Cripto"]
+
+    value= usar_precio_rt and tiene_conexion()
+
+    realtime = st.checkbox("Obtener precio en tiempo real", disabled=not value)
+
+    if not tiene_conexion():
+        st.warning("⚠️ No hay conexión a internet. Solo puedes ingresar el precio manualmente.")
+    
+    if not usar_precio_rt:
+        st.warning("⚠️ Introduce manualmente el precio de compra de tu activo")
 
     precio_mostrar = None
     sector_detectado = ""
@@ -70,17 +92,18 @@ def add_asset_form():
             st.warning("No se pudo obtener el precio automáticamente.")
 
     if not precio_mostrar:
-        precio_mostrar = st.number_input("Precio", min_value=0.0, format="%.4f")
+        precio_mostrar = st.number_input("Precio de compra", min_value=0.0, format="%.4f")
 
     cantidad = st.number_input("Cantidad", min_value=0.0, format="%.6f")
     operacion = st.selectbox("Operación", ["Compra", "Venta"])
     fecha = st.date_input("Fecha de la operación")
+    plataforma= st.text_input("Plataforma de compra (GBM,Bitso,etc)")
 
     # Campo editable para sector, por si se detectó o si se quiere añadir manualmente
     sector = st.text_input("Sector (opcional)", value=sector_detectado)
 
     # Comisiones
-    usa_comision = st.checkbox("¿Incluye comisión?")
+    usa_comision = st.checkbox("¿Incluyó comisión?")
     comision_pct = 0.0
     if usa_comision:
         comision_pct = st.number_input("Porcentaje de comisión (%)", min_value=0.0, max_value=100.0, step=0.1)
@@ -94,6 +117,7 @@ def add_asset_form():
             "Activo": ticker.upper(),
             "Cantidad": cantidad,
             "Precio": precio_mostrar,
+            "Plataforma":plataforma,
             "Operación": operacion,
             "Fecha": pd.to_datetime(fecha),
             "Sector": sector,

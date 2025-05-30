@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import datetime
 import yfinance as yf
+from utils import tiene_conexion
 
 def show_summary(data):
     st.subheader("📊 Resumen del Portafolio")
@@ -37,16 +38,6 @@ def show_summary(data):
 
 
 
-
-def show_value_by_type(data):
-    st.subheader("📈 Distribución por Tipo de Activo")
-    df = data.groupby("Tipo")["Valor Actual"].sum().reset_index()
-
-    fig, ax = plt.subplots()
-    ax.pie(df["Valor Actual"], labels=df["Tipo"], autopct='%1.1f%%', startangle=90, colors=plt.cm.Paired.colors)
-    ax.axis('equal')
-    st.pyplot(fig)
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -73,6 +64,10 @@ def show_sector_distribution(data):
 import plotly.express as px
 def simulate_portfolio_history(data):
     st.subheader("📈 Simulación del Valor del Portafolio a Través del Tiempo")
+
+    if not tiene_conexion():
+        st.error("❌ No hay conexión a internet. No se pueden descargar precios en este momento.")
+        return
 
     # Validación y limpieza de datos
     data = data.dropna(subset=["Activo", "Cantidad"])
