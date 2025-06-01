@@ -77,14 +77,15 @@ if data is not None and not data.empty:
 
 
     # Crear pestañas
-    tab1, tab2, tab3 = st.tabs(["📋 Activos", "📈 Simulación", "📊 Resumen"])
+    tab1, tab2, tab3 = st.tabs(["📊 Resumen", "📈 Simulación","📋 Activos"])
 
-    with tab1:
+    with tab3:
         st.subheader("📋 Activos Registrados")
+        data_mostrar=data.copy()
         # Formateo de moneda
         for col in ["Precio","Precio Actual","Valor Compra", "Valor Actual", "Ganancia/Pérdida"]:
-            data[col] = data[col].map("${:,.2f}".format)
-        st.dataframe(data)
+            data_mostrar[col] = data_mostrar[col].map("${:,.2f}".format)
+        st.dataframe(data_mostrar)
 
         st.markdown("### ✏️ Editar Activo")
         activos_disponibles = data["Activo"].astype(str) + " | " + data["Fecha"].dt.strftime("%Y-%m-%d")
@@ -139,7 +140,7 @@ if data is not None and not data.empty:
     with tab2:
         simulate_portfolio_history(data)
 
-    with tab3:
+    with tab1:
         show_summary(data)
 
 else:
