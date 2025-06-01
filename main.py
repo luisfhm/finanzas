@@ -81,6 +81,9 @@ if data is not None and not data.empty:
 
     with tab1:
         st.subheader("📋 Activos Registrados")
+        # Formateo de moneda
+        for col in ["Precio","Precio Actual","Valor Compra", "Valor Actual", "Ganancia/Pérdida"]:
+            data[col] = data[col].map("${:,.2f}".format)
         st.dataframe(data)
 
         st.markdown("### ✏️ Editar Activo")
