@@ -10,7 +10,37 @@ def show_summary(data):
 
     data["Sector"] = data["Sector"].fillna("Desconocido")
 
-    resumen = data.groupby(["Tipo","Sector", "Activo"]).agg({
+    # Identificar activos sin valor actual asignado automáticamente
+    for i, row in data.iterrows():
+        tipo = row.get("Tipo", "")
+        valor_actual = row.get("Valor Actual", None)
+
+        # Si el activo no es acción/cripto o no tiene valor actual, pedir input
+        if tipo not in ["Acción/ETF", "Cripto"] or pd.isna(valor_actual):
+            activo = row["Activo"]
+            cantidad = row["Cantidad"]
+
+            # Input manual por activo
+            valor_unitario = st.number_input(
+                f"💵 Ingresa el valor actual estimado unitario para '{activo}' ({tipo}):",
+                min_value=0.0,
+                value=0.0,
+                step=10.0,
+                key=f"manual_valor_{i}"
+            )
+
+            # Calcular y asignar el valor total estimado
+            data.at[i, "Valor Actual"] = valor_unitario * cantidad
+
+    # Si hay valores de compra faltantes, asegúrate que no causen errores
+    data["Valor Compra"] = pd.to_numeric(data["Valor Compra"], errors="coerce").fillna(0)
+    data["Valor Actual"] = pd.to_numeric(data["Valor Actual"], errors="coerce").fillna(0)
+
+    # Calcular ganancia/pérdida
+    data["Ganancia/Pérdida"] = data["Valor Actual"] - data["Valor Compra"]
+
+    # Agrupar
+    resumen = data.groupby(["Tipo", "Sector", "Activo"]).agg({
         "Cantidad": "sum",
         "Valor Compra": "sum",
         "Valor Actual": "sum",
@@ -29,12 +59,12 @@ def show_summary(data):
     - 📈 **Ganancia/Pérdida Total:** ${total_ganancia:,.2f}
     """)
 
-    # Formateo de moneda por columna
+    # Formateo de moneda
     for col in ["Valor Compra", "Valor Actual", "Ganancia/Pérdida"]:
         resumen[col] = resumen[col].map("${:,.2f}".format)
 
-    # Mostrar la tabla
     st.dataframe(resumen)
+
 
 
 
@@ -69,13 +99,40 @@ def simulate_portfolio_history(data):
         st.error("❌ No hay conexión a internet. No se pueden descargar precios en este momento.")
         return
 
+    # Selector de tipo de activos
+    tipos_disponibles = data["Tipo"].dropna().unique().tolist()
+    tipos_seleccionados = st.multiselect(
+        "Selecciona los tipos de activos a simular:",
+        tipos_disponibles,
+        default=tipos_disponibles
+    )
+
+    # Selector de ventana temporal
+    dias_opciones = {
+        "Últimos 30 días": 30,
+        "Últimos 90 días": 90,
+        "Últimos 180 días": 180,
+        "Últimos 360 días": 360
+    }
+    dias_seleccionados = st.selectbox(
+        "Selecciona el rango de tiempo para la simulación:",
+        list(dias_opciones.keys()),
+        index=3  # por defecto 360 días
+    )
+    dias = dias_opciones[dias_seleccionados]
+
     # Validación y limpieza de datos
     data = data.dropna(subset=["Activo", "Cantidad"])
     data["Cantidad"] = pd.to_numeric(data["Cantidad"], errors="coerce").fillna(0)
+    data = data[data["Tipo"].isin(tipos_seleccionados)]
+
+    if data.empty:
+        st.warning("No hay activos con los tipos seleccionados.")
+        return
 
     # Rango de fechas
     end = datetime.datetime.today()
-    start = end - pd.DateOffset(days=360)
+    start = end - pd.DateOffset(days=dias)
 
     valor_total_diario = pd.DataFrame()
 
@@ -84,7 +141,6 @@ def simulate_portfolio_history(data):
         cantidad = row["Cantidad"]
         tipo = row.get("Tipo", "")
 
-        # Asegurar sufijo .MX si aplica
         if tipo == "Acción/ETF" and not ticker.endswith(".MX"):
             ticker_yf = ticker + ".MX"
         else:
@@ -108,9 +164,11 @@ def simulate_portfolio_history(data):
 
         fig = px.line(valor_total_diario.reset_index(),
                       x="Date", y="Total",
-                      title="📈 Valor del Portafolio Simulado en el Tiempo",
+                      title=f"📈 Valor del Portafolio en los últimos {dias} días",
                       labels={"Total": "Valor total (MXN)", "Date": "Fecha"},
                       markers=True)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("No se pudo generar la gráfica. Verifica los tickers o conexión.")
+
+
