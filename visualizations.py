@@ -8,38 +8,20 @@ from utils import tiene_conexion
 def show_summary(data):
     st.subheader("📊 Resumen del Portafolio")
 
+    data["Sector"] = data.get("Sector", "Desconocido")
     data["Sector"] = data["Sector"].fillna("Desconocido")
 
-    # Identificar activos sin valor actual asignado automáticamente
-    for i, row in data.iterrows():
-        tipo = row.get("Tipo", "")
-        valor_actual = row.get("Valor Actual", None)
+    # Asegurar conversiones numéricas
+    data["Precio"] = pd.to_numeric(data["Precio"], errors="coerce").fillna(0)
+    data["Precio Actual"] = pd.to_numeric(data["Precio Actual"], errors="coerce").fillna(0)
+    data["Cantidad"] = pd.to_numeric(data["Cantidad"], errors="coerce").fillna(0)
 
-        # Si el activo no es acción/cripto o no tiene valor actual, pedir input
-        if tipo not in ["Acción/ETF", "Cripto"] or pd.isna(valor_actual):
-            activo = row["Activo"]
-            cantidad = row["Cantidad"]
-
-            # Input manual por activo
-            valor_unitario = st.number_input(
-                f"💵 Ingresa el valor actual estimado unitario para '{activo}' ({tipo}):",
-                min_value=0.0,
-                value=0.0,
-                step=10.0,
-                key=f"manual_valor_{i}"
-            )
-
-            # Calcular y asignar el valor total estimado
-            data.at[i, "Valor Actual"] = valor_unitario * cantidad
-
-    # Si hay valores de compra faltantes, asegúrate que no causen errores
-    data["Valor Compra"] = pd.to_numeric(data["Valor Compra"], errors="coerce").fillna(0)
-    data["Valor Actual"] = pd.to_numeric(data["Valor Actual"], errors="coerce").fillna(0)
-
-    # Calcular ganancia/pérdida
+    # Calcular valor actual y ganancia/pérdida
+    data["Valor Actual"] = data["Precio Actual"] * data["Cantidad"]
+    data["Valor Compra"] = data["Precio"] * data["Cantidad"]
     data["Ganancia/Pérdida"] = data["Valor Actual"] - data["Valor Compra"]
 
-    # Agrupar
+    # Agrupar resumen
     resumen = data.groupby(["Tipo", "Sector", "Activo"]).agg({
         "Cantidad": "sum",
         "Valor Compra": "sum",
@@ -68,28 +50,11 @@ def show_summary(data):
 
 
 
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def show_sector_distribution(data):
-    st.subheader("📈 Distribución del Portafolio por Sector")
 
-    if "Sector" not in data.columns:
-        st.warning("No hay información del sector disponible.")
-        return
-
-    # Agrupar por sector y sumar el valor actual
-    sector_data = data.groupby("Sector")["Valor Actual"].sum().reset_index()
-
-    if sector_data.empty:
-        st.info("No hay datos de sectores para mostrar.")
-        return
-
-    # Gráfico de pastel
-    fig, ax = plt.subplots()
-    ax.pie(sector_data["Valor Actual"], labels=sector_data["Sector"], autopct='%1.1f%%', startangle=90)
-    ax.axis("equal")
-    st.pyplot(fig)
 
 import plotly.express as px
 def simulate_portfolio_history(data):
@@ -141,15 +106,18 @@ def simulate_portfolio_history(data):
         cantidad = row["Cantidad"]
         tipo = row.get("Tipo", "")
 
-        if tipo == "Acción/ETF" and not ticker.endswith(".MX"):
-            ticker_yf = ticker + ".MX"
+        # Formatear el ticker para yfinance según el tipo
+        if tipo.lower() == "cripto":
+            ticker_yf = f"{ticker}-USD"
+        elif tipo.lower() == "acción/etf":
+            ticker_yf = f"{ticker}.MX" if not ticker.endswith(".MX") else ticker
         else:
-            ticker_yf = ticker
+            continue  # activos que no se pueden simular por historial
 
         try:
             hist = yf.download(ticker_yf, start=start, end=end, progress=False)
             if hist.empty or "Close" not in hist.columns:
-                st.warning(f"No se encontraron precios para {ticker_yf}")
+                st.warning(f"⚠️ No se encontraron precios para {ticker_yf}")
                 continue
 
             precios = hist["Close"]
@@ -157,7 +125,7 @@ def simulate_portfolio_history(data):
             valor_total_diario[ticker] = valor
 
         except Exception as e:
-            st.warning(f"{ticker}: Error al obtener datos ({e})")
+            st.warning(f"⚠️ {ticker}: Error al obtener datos ({e})")
 
     if not valor_total_diario.empty:
         valor_total_diario["Total"] = valor_total_diario.sum(axis=1)
@@ -169,6 +137,7 @@ def simulate_portfolio_history(data):
                       markers=True)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("No se pudo generar la gráfica. Verifica los tickers o conexión.")
+        st.warning("⚠️ No se pudo generar la gráfica. Verifica los tickers o conexión.")
+
 
 
