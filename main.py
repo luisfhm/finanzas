@@ -25,7 +25,12 @@ authenticator = stauth.Authenticate(
 authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
 
 # Lógica del login
-if st.session_state["authentication_status"]:
+if st.session_state.get("authentication_status"):
+
+    # Obtener usuario para archivo personalizado
+    username = st.session_state.get("username", "default")
+    archivo_portafolio = f"portafolio_{username}.csv"
+
     # Mostrar mensaje temporal de bienvenida
     placeholder = st.empty()
     with placeholder:
@@ -47,8 +52,7 @@ if st.session_state["authentication_status"]:
 
     # Cargar datos
     try:
-        data = pd.read_csv("portafolio.csv", parse_dates=["Fecha"])
-
+        data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
     except FileNotFoundError:
         data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"])
 

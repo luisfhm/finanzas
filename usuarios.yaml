@@ -1,13 +1,15 @@
 credentials:
   usernames:
-    alice:
-      name: Alice Smith
-      password: '$2b$12$8pTNGzB0XQTCM6MLeaw8vuCrZoBxmZ3l7LEGljVpPeAZpSSKl7ZXq'  # hash de "password123"
-      email: alice@example.com
-    bob:
-      name: Bob Johnson
-      password: '$2b$12$2pMERkAgRfuAH9WKwFJSueZ3iT3I.PbuJMok1D4YOf1PBcwWoGe06'  # hash de "mypassword"
-      email: bob@example.com
+    luis:
+      name: Luis Hernández
+      password: '$2b$12$w3Kqg0kYLULk4KGv/tzoi.3p0tGuS2vm6uXj4wqXH8aZ/0P4gMPLq'  # hash de "luis1234"
+      email: luis@example.com
+      portfolio_file: portafolio_luis.csv
+    demo:
+      name: Usuario Demo
+      password: '$2b$12$ae62JYXfSXYsPzFV6P9/Fu7xPvO8vlpM6WdIKNqTIVWQeYx4L7Uyq'  # hash de "demopass"
+      email: demo@example.com
+      portfolio_file: portafolio_demo.csv
 
 cookie:
   name: my_cookie
