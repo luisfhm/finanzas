@@ -1,0 +1,15 @@
+credentials:
+  usernames:
+    alice:
+      name: Alice Smith
+      password: '$2b$12$8pTNGzB0XQTCM6MLeaw8vuCrZoBxmZ3l7LEGljVpPeAZpSSKl7ZXq'  # hash de "password123"
+      email: alice@example.com
+    bob:
+      name: Bob Johnson
+      password: '$2b$12$2pMERkAgRfuAH9WKwFJSueZ3iT3I.PbuJMok1D4YOf1PBcwWoGe06'  # hash de "mypassword"
+      email: bob@example.com
+
+cookie:
+  name: my_cookie
+  key: some_random_secret_key_12345
+  expiry_days: 30
