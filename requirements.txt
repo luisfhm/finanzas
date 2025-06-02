@@ -8,3 +8,4 @@ seaborn
 requests
 pathlib
 PyYAML
+streamlit-authenticator
