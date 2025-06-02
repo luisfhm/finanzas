@@ -7,12 +7,14 @@ import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 
+# Configuración de la página
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
-# Cargar configuración
+# Cargar configuración desde archivo YAML
 with open('usuarios.yaml') as file:
     config = yaml.load(file, Loader=SafeLoader)
 
+# Inicializar autenticador
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
@@ -23,27 +25,28 @@ authenticator = stauth.Authenticate(
 # Mostrar login en el cuerpo principal
 authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
 
-# Lógica del login
+# Lógica de autenticación
 if 'authentication_status' not in st.session_state:
     st.warning("Por favor ingresa tus credenciales")
-elif st.session_state["authentication_status"] is False:
+    st.stop()
+elif not st.session_state["authentication_status"]:
     st.error("Usuario o contraseña incorrectos")
-elif st.session_state["authentication_status"]:
+    st.stop()
+else:
     st.success(f'Bienvenido {st.session_state["name"]}')
 
+    # Botón para cerrar sesión
     if st.button("Cerrar sesión"):
         authenticator.logout('main')
         for key in ['authentication_status', 'name', 'username']:
-            if key in st.session_state:
-                del st.session_state[key]
-        
-        # Recargar página usando JavaScript (hack)
-        js = """
+            st.session_state.pop(key, None)
+
+        # Recargar la página tras logout
+        st.components.v1.html("""
         <script>
             window.location.reload();
         </script>
-        """
-        st.components.v1.html(js)
+        """, height=0)
 
 
     st.title("📈 Tracker de Portafolio Personal")
