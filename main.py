@@ -3,44 +3,85 @@ import pandas as pd
 import datetime
 from utils import add_asset_form, agregar_valor_actual, tiene_conexion
 from visualizations import show_summary, simulate_portfolio_history
-import yaml
-from yaml.loader import SafeLoader
-import streamlit_authenticator as stauth
-import time
+from supabase import create_client, Client
+import os
+
+# Configura tus credenciales de Supabase
+SUPABASE_URL = "https://cqmmjurahnrurqcpropz.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxbW1qdXJhaG5ydXJxY3Byb3B6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg4MzU3NjQsImV4cCI6MjA2NDQxMTc2NH0.XLZDSwX1pi6_A5M1ZgDeSH5qcUrVc4GydTH8OKTBPFE"  # Pon tu anon key aquí
+
+# Crea cliente Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
-# Carga configuración
-with open('usuarios.yaml') as file:
-    config = yaml.load(file, Loader=SafeLoader)
+if "user" not in st.session_state:
+    st.session_state["user"] = None
 
-authenticator = stauth.Authenticate(
-    config['credentials'],
-    config['cookie']['name'],
-    config['cookie']['key'],
-    config['cookie']['expiry_days']
-)
+if st.session_state["user"] is None:
+    tab_login, tab_register = st.tabs(["🔐 Iniciar sesión", "🆕 Registrarse"])
 
-authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
+    with tab_login:
+        email = st.text_input("Email")
+        password = st.text_input("Contraseña", type="password")
+        if st.button("Iniciar sesión"):
+            response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            if response.user:
+                st.session_state["user"] = response.user
+                st.rerun()
+            else:
+                st.error("Email o contraseña incorrectos")
 
-if st.session_state.get("authentication_status"):
-    st.sidebar.title(f"Bienvenido {st.session_state['name']} 👋")
-    authenticator.logout("Cerrar sesión", "sidebar")
+    with tab_register:
+        new_email = st.text_input("Nuevo Email")
+        new_password = st.text_input("Nueva Contraseña", type="password")
+        if st.button("Registrarse"):
+            try:
+                res = supabase.auth.sign_up({
+                    "email": new_email,
+                    "password": new_password
+                })
+                if res.user:
+                    st.success("✅ Registro exitoso. Ahora puedes iniciar sesión.")
+                else:
+                    st.error("Error al registrar usuario.")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
-    # Obtener usuario y archivo de portafolio
-    username = st.session_state['username']
-    user_info = config['credentials']['usernames'][username]
-    archivo_portafolio = user_info.get('portfolio', 'portafolio_default.csv')
+else:
+    user = st.session_state["user"]
+    st.sidebar.write(f"Usuario: {user.email}")
+    if st.sidebar.button("Cerrar sesión"):
+        supabase.auth.sign_out()
+        st.session_state["user"] = None
+        st.rerun()
 
-    # Mostrar mensaje de carga temporal
-    with st.spinner("Cargando portafolio..."):
-        placeholder = st.empty()
-        try:
-            data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
-            placeholder.empty()  # Quitar mensaje después de cargar
-        except FileNotFoundError:
+    user_id = user.id
+    archivo_portafolio = f"portafolio_{user_id}.csv"
+
+    if os.path.exists(archivo_portafolio):
+        data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
+    else:
+        st.info("🔄 Puedes cargar tu portafolio si ya tienes uno guardado en formato CSV.")
+        uploaded_file = st.file_uploader("Cargar archivo de portafolio (.csv)", type=["csv"])
+
+        if uploaded_file is not None:
+            try:
+                temp_data = pd.read_csv(uploaded_file, parse_dates=["Fecha"])
+                required_cols = {"Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"}
+                if required_cols.issubset(temp_data.columns):
+                    temp_data.to_csv(archivo_portafolio, index=False)
+                    data = temp_data
+                    st.success("✅ Portafolio cargado con éxito.")
+                    st.rerun()
+                else:
+                    st.error("❌ El archivo no contiene las columnas requeridas: " + ", ".join(required_cols))
+            except Exception as e:
+                st.error(f"Error al cargar archivo: {e}")
+        else:
             data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"])
-            placeholder.error("El archivo de portafolio no fue encontrado.")
+
+
     # Sidebar para agregar activos
     with st.sidebar:
         new_entry = add_asset_form()
@@ -171,7 +212,3 @@ if st.session_state.get("authentication_status"):
 
     else:
         st.warning("No hay datos disponibles. Por favor, agrega activos en la barra lateral.")
-elif st.session_state.get("authentication_status") is False:
-    st.error("Usuario o contraseña incorrectos")
-else:
-    st.warning("Por favor ingresa tus credenciales")
