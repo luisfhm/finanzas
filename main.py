@@ -4,12 +4,15 @@ import datetime
 from utils import add_asset_form, agregar_valor_actual, tiene_conexion
 from visualizations import show_summary, simulate_portfolio_history
 from supabase import create_client, Client
+from dotenv import load_dotenv
 import os
 
-# Configura tus credenciales de Supabase
-SUPABASE_URL = "https://cqmmjurahnrurqcpropz.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxbW1qdXJhaG5ydXJxY3Byb3B6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg4MzU3NjQsImV4cCI6MjA2NDQxMTc2NH0.XLZDSwX1pi6_A5M1ZgDeSH5qcUrVc4GydTH8OKTBPFE"  # Pon tu anon key aquí
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
 
+# Acceder a las variables
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 # Crea cliente Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
