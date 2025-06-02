@@ -24,21 +24,23 @@ authenticator = stauth.Authenticate(
 authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
 
 if st.session_state.get("authentication_status"):
-    st.write(f"Bienvenido {st.session_state['name']}")
-    username = st.session_state['username']
+    st.sidebar.title(f"Bienvenido {st.session_state['name']} 👋")
+    authenticator.logout("Cerrar sesión", "sidebar")
 
-    # Obtener archivo de portafolio del usuario
+    # Obtener usuario y archivo de portafolio
+    username = st.session_state['username']
     user_info = config['credentials']['usernames'][username]
     archivo_portafolio = user_info.get('portfolio', 'portafolio_default.csv')
 
-    st.write(f"Cargando portafolio: {archivo_portafolio}")
-
-    # Aquí cargas el CSV según el usuario
-    import pandas as pd
-    try:
-        data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
-    except FileNotFoundError:
-        data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"])
+    # Mostrar mensaje de carga temporal
+    with st.spinner("Cargando portafolio..."):
+        placeholder = st.empty()
+        try:
+            data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
+            placeholder.empty()  # Quitar mensaje después de cargar
+        except FileNotFoundError:
+            data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"])
+            placeholder.error("El archivo de portafolio no fue encontrado.")
     # Sidebar para agregar activos
     with st.sidebar:
         new_entry = add_asset_form()
