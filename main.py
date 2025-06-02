@@ -6,6 +6,7 @@ from visualizations import show_summary, simulate_portfolio_history
 import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
+import time
 
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
@@ -24,25 +25,25 @@ authenticator = stauth.Authenticate(
 authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
 
 # Lógica del login
-if 'authentication_status' not in st.session_state:
-    st.warning("Por favor ingresa tus credenciales")
-elif st.session_state["authentication_status"] is False:
-    st.error("Usuario o contraseña incorrectos")
-elif st.session_state["authentication_status"]:
-    if st.session_state["authentication_status"]:
-        # Mostrar botón en parte superior con columnas
-        col1, col2, col3 = st.columns([6, 1, 1])
-        with col3:
-            if st.button("🔓 Cerrar sesión"):
-                authenticator.logout('main')
-                for key in ("authentication_status", "name", "username"):
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
+if st.session_state["authentication_status"]:
+    # Mostrar mensaje temporal de bienvenida
+    placeholder = st.empty()
+    with placeholder:
+        st.success(f'Bienvenido {st.session_state["name"]}')
+    time.sleep(3)
+    placeholder.empty()
+
+    # Botón de logout en esquina derecha
+    col1, col2, col3 = st.columns([6, 1, 1])
+    with col3:
+        if st.button("🔓 Cerrar sesión"):
+            authenticator.logout('main')
+            for key in ("authentication_status", "name", "username"):
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
 
     st.title("📈 Tracker de Portafolio Personal")
-
-    st.success(f'Bienvenido {st.session_state["name"]}')
 
     # Cargar datos
     try:
