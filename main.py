@@ -7,14 +7,12 @@ import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 
-# Configuración de la página
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
-# Cargar configuración desde archivo YAML
+# Cargar configuración
 with open('usuarios.yaml') as file:
     config = yaml.load(file, Loader=SafeLoader)
 
-# Inicializar autenticador
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
@@ -25,31 +23,27 @@ authenticator = stauth.Authenticate(
 # Mostrar login en el cuerpo principal
 authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
 
-# Lógica de autenticación
+# Lógica del login
 if 'authentication_status' not in st.session_state:
     st.warning("Por favor ingresa tus credenciales")
-    st.stop()
-elif not st.session_state["authentication_status"]:
+elif st.session_state["authentication_status"] is False:
     st.error("Usuario o contraseña incorrectos")
-    st.stop()
-else:
-    st.success(f'Bienvenido {st.session_state["name"]}')
-
-    # Botón para cerrar sesión
-    if st.button("Cerrar sesión"):
-        authenticator.logout('main')
-        for key in ['authentication_status', 'name', 'username']:
-            st.session_state.pop(key, None)
-
-        # Recargar la página tras logout
-        st.components.v1.html("""
-        <script>
-            window.location.reload();
-        </script>
-        """, height=0)
-
+elif st.session_state["authentication_status"]:
+    if st.session_state["authentication_status"]:
+        # Mostrar botón en parte superior con columnas
+        col1, col2, col3 = st.columns([6, 1, 1])
+        with col3:
+            if st.button("🔓 Cerrar sesión"):
+                authenticator.logout('main')
+                for key in ("authentication_status", "name", "username"):
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
 
     st.title("📈 Tracker de Portafolio Personal")
+
+    st.success(f'Bienvenido {st.session_state["name"]}')
+
     # Cargar datos
     try:
         data = pd.read_csv("portafolio.csv", parse_dates=["Fecha"])
