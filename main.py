@@ -10,7 +10,7 @@ import time
 
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
-# Cargar configuración
+# Carga configuración
 with open('usuarios.yaml') as file:
     config = yaml.load(file, Loader=SafeLoader)
 
@@ -21,41 +21,24 @@ authenticator = stauth.Authenticate(
     config['cookie']['expiry_days']
 )
 
-# Mostrar login en el cuerpo principal
 authenticator.login('main', fields={'Form name': 'Iniciar sesión'})
 
-# Lógica del login
 if st.session_state.get("authentication_status"):
+    st.write(f"Bienvenido {st.session_state['name']}")
+    username = st.session_state['username']
 
-    # Obtener usuario para archivo personalizado
-    username = st.session_state.get("username", "default")
-    archivo_portafolio = f"portafolio_{username}.csv"
+    # Obtener archivo de portafolio del usuario
+    user_info = config['credentials']['usernames'][username]
+    archivo_portafolio = user_info.get('portfolio', 'portafolio_default.csv')
 
-    # Mostrar mensaje temporal de bienvenida
-    placeholder = st.empty()
-    with placeholder:
-        st.success(f'Bienvenido {st.session_state["name"]}')
-    time.sleep(3)
-    placeholder.empty()
+    st.write(f"Cargando portafolio: {archivo_portafolio}")
 
-    # Botón de logout en esquina derecha
-    col1, col2, col3 = st.columns([6, 1, 1])
-    with col3:
-        if st.button("🔓 Cerrar sesión"):
-            authenticator.logout('main')
-            for key in ("authentication_status", "name", "username"):
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-
-    st.title("📈 Tracker de Portafolio Personal")
-
-    # Cargar datos
+    # Aquí cargas el CSV según el usuario
+    import pandas as pd
     try:
         data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
     except FileNotFoundError:
         data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"])
-
     # Sidebar para agregar activos
     with st.sidebar:
         new_entry = add_asset_form()
@@ -186,3 +169,7 @@ if st.session_state.get("authentication_status"):
 
     else:
         st.warning("No hay datos disponibles. Por favor, agrega activos en la barra lateral.")
+elif st.session_state.get("authentication_status") is False:
+    st.error("Usuario o contraseña incorrectos")
+else:
+    st.warning("Por favor ingresa tus credenciales")
