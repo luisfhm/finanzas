@@ -7,4 +7,4 @@ datetime
 seaborn
 requests
 pathlib
-yaml
+PyYAML
