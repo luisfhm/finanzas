@@ -9,3 +9,5 @@ requests
 pathlib
 PyYAML
 streamlit-authenticator
+supabase
+os
