@@ -3,10 +3,9 @@ pandas
 matplotlib
 plotly
 yfinance
-datetime
 seaborn
 requests
-pathlib
 PyYAML
 streamlit-authenticator
 supabase
+dotenv
