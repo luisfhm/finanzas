@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import requests
 import pandas as pd
-
+from supabase import create_client, Client 
 import requests
 
 def tiene_conexion():
@@ -119,7 +119,7 @@ def add_asset_form():
             "Precio": precio_mostrar,
             "Plataforma":plataforma,
             "Operación": operacion,
-            "Fecha": pd.to_datetime(fecha),
+            "Fecha": pd.to_datetime(fecha).isoformat(),
             "Sector": sector,
             "Comisión (%)": comision_pct if usa_comision else 0.0
         }
@@ -137,8 +137,76 @@ def obtener_precios_actuales_unicos(data):
 
 def agregar_valor_actual(data):
     precios = obtener_precios_actuales_unicos(data)
-    data["Precio Actual"] = data["Activo"].map(precios)
+
+    data["Precio Actual"] = data.apply(
+        lambda row: row["Precio Manual"] 
+        if not pd.isna(row["Precio Manual"]) and row["Precio Manual"] > 0 
+        else precios.get(row["Activo"], 0.0),
+        axis=1
+    )
+
     data["Valor Actual"] = data["Cantidad"] * data["Precio Actual"]
     data["Valor Compra"] = data["Cantidad"] * data["Precio"]
     data["Ganancia/Pérdida"] = data["Valor Actual"] - data["Valor Compra"]
     return data
+
+
+def guardar_activo_en_supabase(supabase_user, entry):
+    try:
+        supabase_user.table("activos").insert(entry).execute()
+    except Exception as e:
+        st.error(f"Error al guardar en Supabase: {e}")
+
+
+
+def obtener_activos_usuario(supabase_client, user_id):
+    try:
+        response = supabase_client.table("activos").select("*").eq("user_id", user_id).execute()
+        return pd.DataFrame(response.data)
+    except Exception as e:
+        st.error(f"❌ Error al obtener los activos: {e}")
+        return pd.DataFrame()
+
+
+
+def actualizar_activo_supabase(supabase, user_id, activo_id, nuevos_valores: dict):
+    try:
+        response = supabase.table("activos") \
+            .update(nuevos_valores) \
+            .eq("id", activo_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if response.status_code == 200 and response.data:
+            return {"success": True, "data": response.data}
+        else:
+            return {"success": False, "error": response.error or "Error desconocido en actualización"}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def eliminar_activo_supabase(supabase, user_id, activo_id):
+    response = supabase.table("activos") \
+        .delete() \
+        .eq("id", activo_id) \
+        .eq("user_id", user_id) \
+        .execute()
+    return response
+
+
+from gotrue import SyncMemoryStorage
+
+def create_authenticated_client(url, anon_key, access_token):
+    class Options:
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        auto_refresh_token = False
+        persist_session = False
+        storage = None
+        flow_type = "pkce"
+        realtime = None
+        schema = "public"
+        postgrest_client_timeout = 10  # en segundos, por ejemplo
+
+    return create_client(url, anon_key, options=Options())

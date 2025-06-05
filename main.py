@@ -1,164 +1,212 @@
 import streamlit as st
 import pandas as pd
-import datetime
-from utils import add_asset_form, agregar_valor_actual, tiene_conexion
+from utils import (
+    add_asset_form, agregar_valor_actual, tiene_conexion,
+    guardar_activo_en_supabase, obtener_activos_usuario,
+    actualizar_activo_supabase, eliminar_activo_supabase,
+    create_authenticated_client
+)
 from visualizations import show_summary, simulate_portfolio_history
-from supabase import create_client, Client
+from supabase import create_client
 from dotenv import load_dotenv
 import os
+import jwt
 
-# Cargar variables de entorno desde el archivo .env
 load_dotenv()
 
-# Acceder a las variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-# Crea cliente Supabase
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
+# --- Helper para manejar sesión persistente ---
+def guardar_token_en_session(token, user):
+    st.session_state["access_token"] = token
+    st.session_state["user"] = user
+
+def limpiar_sesion():
+    for k in ["access_token", "user"]:
+        if k in st.session_state:
+            del st.session_state[k]
+
+# --- Manejar inicio con token guardado ---
+if "access_token" not in st.session_state:
+    st.session_state["access_token"] = None
 if "user" not in st.session_state:
     st.session_state["user"] = None
 
-if st.session_state["user"] is None:
+# --- Mostrar pantalla login/registro si no hay usuario ---
+if not st.session_state["user"]:
     tab_login, tab_register = st.tabs(["🔐 Iniciar sesión", "🆕 Registrarse"])
 
     with tab_login:
-        email = st.text_input("Email")
-        password = st.text_input("Contraseña", type="password")
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Contraseña", type="password", key="login_password")
         if st.button("Iniciar sesión"):
-            response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-            if response.user:
-                st.session_state["user"] = response.user
-                st.rerun()
-            else:
-                st.error("Email o contraseña incorrectos")
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                if res.user:
+                    guardar_token_en_session(res.session.access_token, res.user)
+                    st.success("✅ Sesión iniciada")
+                    st.rerun()
+                else:
+                    st.error("Email o contraseña incorrectos")
+            except Exception as e:
+                st.error(f"Error de inicio de sesión: {e}")
 
     with tab_register:
-        new_email = st.text_input("Nuevo Email")
-        new_password = st.text_input("Nueva Contraseña", type="password")
+        new_email = st.text_input("Nuevo Email", key="reg_email")
+        new_password = st.text_input("Nueva Contraseña", type="password", key="reg_password")
         if st.button("Registrarse"):
             try:
-                res = supabase.auth.sign_up({
-                    "email": new_email,
-                    "password": new_password
-                })
+                res = supabase.auth.sign_up({"email": new_email, "password": new_password})
                 if res.user:
                     st.success("✅ Registro exitoso. Ahora puedes iniciar sesión.")
                 else:
                     st.error("Error al registrar usuario.")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error al registrar usuario: {e}")
 
 else:
-    user = st.session_state["user"]
-    st.sidebar.write(f"Usuario: {user.email}")
-    if st.sidebar.button("Cerrar sesión"):
-        supabase.auth.sign_out()
-        st.session_state["user"] = None
+    # Usuario ya autenticado
+    supabase_user = create_authenticated_client(SUPABASE_URL, SUPABASE_ANON_KEY, st.session_state["access_token"])
+
+    try:
+        decoded_token = jwt.decode(st.session_state["access_token"], options={"verify_signature": False})
+        user_id = decoded_token.get("sub", None)
+    except Exception:
+        st.error("Token inválido. Por favor, cierra sesión y vuelve a iniciar sesión.")
+        limpiar_sesion()
         st.rerun()
 
-    user_id = user.id
-    archivo_portafolio = f"portafolio_{user_id}.csv"
+    st.sidebar.write(f"Usuario: {st.session_state['user'].email}")
+    if st.sidebar.button("Cerrar sesión"):
+        limpiar_sesion()
+        st.rerun()
 
-    if os.path.exists(archivo_portafolio):
-        data = pd.read_csv(archivo_portafolio, parse_dates=["Fecha"])
-    else:
+    # Obtener activos usuario
+    data = obtener_activos_usuario(supabase_user, user_id)
+
+    # Importar CSV si portafolio vacío
+    if data.empty:
         st.info("🔄 Puedes cargar tu portafolio si ya tienes uno guardado en formato CSV.")
         uploaded_file = st.file_uploader("Cargar archivo de portafolio (.csv)", type=["csv"])
-
         if uploaded_file is not None:
             try:
-                temp_data = pd.read_csv(uploaded_file, parse_dates=["Fecha"])
+                temp_data = pd.read_csv(uploaded_file, encoding='utf-8-sig', parse_dates=["Fecha"])
                 required_cols = {"Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"}
                 if required_cols.issubset(temp_data.columns):
-                    temp_data.to_csv(archivo_portafolio, index=False)
-                    data = temp_data
-                    st.success("✅ Portafolio cargado con éxito.")
+                    entries = []
+                    for _, row in temp_data.iterrows():
+                        entries.append({
+                            "Fecha": row["Fecha"].strftime("%Y-%m-%d") if not pd.isna(row["Fecha"]) else None,
+                            "Tipo": row["Tipo"],
+                            "Activo": row["Activo"],
+                            "Cantidad": row["Cantidad"],
+                            "Precio": row["Precio"],
+                            "Plataforma": row["Plataforma"],
+                            "user_id": user_id
+                        })
+                    # Guardar en batch (si tu función lo soporta, si no iterar)
+                    for entry in entries:
+                        guardar_activo_en_supabase(supabase_user, entry)
+                    st.success("✅ Portafolio importado con éxito.")
                     st.rerun()
                 else:
-                    st.error("❌ El archivo no contiene las columnas requeridas: " + ", ".join(required_cols))
+                    st.error("❌ El archivo no contiene las columnas requeridas.")
             except Exception as e:
                 st.error(f"Error al cargar archivo: {e}")
-        else:
-            data = pd.DataFrame(columns=["Fecha", "Tipo", "Activo", "Cantidad", "Precio", "Plataforma"])
 
-
-    # Sidebar para agregar activos
+    # Formulario para agregar activos en sidebar
     with st.sidebar:
         new_entry = add_asset_form()
         if new_entry:
-            data = pd.concat([data, pd.DataFrame([new_entry])], ignore_index=True)
-            data["Fecha"] = pd.to_datetime(data["Fecha"], errors='coerce')
-            data.to_csv("portafolio.csv", index=False)
+            guardar_activo_en_supabase(supabase_user, new_entry)
             st.success("✅ Activo agregado con éxito")
+            st.rerun()
 
-    # Validar conexión
+    # Verificar conexión
     if not tiene_conexion():
-        st.warning("⚠️ Estás sin conexión. Algunas funciones como obtener precios o simulaciones no estarán disponibles.")
+        st.warning("⚠️ Estás sin conexión. Algunas funciones no estarán disponibles.")
 
-    # Verifica que hay datos
-    if data is not None and not data.empty:
+    if not data.empty:
         data = data.sort_values("Fecha", ascending=False)
         data = agregar_valor_actual(data)
 
-        # Asegurar columna Precio Manual
         if "Precio Manual" not in data.columns:
             data["Precio Manual"] = None
 
-        # Usar Precio Manual si Precio Actual no está disponible
-        for idx, row in data.iterrows():
-            if pd.isna(row["Precio Actual"]) or row["Valor Actual"] == 0:
-                if pd.notna(row["Precio Manual"]):
-                    data.at[idx, "Precio Actual"] = row["Precio Manual"]
-                    data.at[idx, "Valor Actual"] = row["Cantidad"] * row["Precio Manual"]
-                    data.at[idx, "Ganancia/Pérdida"] = (row["Precio Manual"] - row["Precio"]) * row["Cantidad"]
-                else:
-                    st.warning(f"⚠️ {row['Activo']} no tiene precio actual. Puedes ingresarlo manualmente.")
-                    valor_manual = st.number_input(
-                        f"Introduce precio actual estimado para '{row['Activo']}'",
-                        min_value=0.0,
-                        step=100.0,
-                        key=f"manual_input_{idx}"
-                    )
-                    if valor_manual > 0:
-                        data.at[idx, "Precio Manual"] = valor_manual
-                        data.at[idx, "Precio Actual"] = valor_manual
-                        data.at[idx, "Valor Actual"] = row["Cantidad"] * row["Precio Manual"]
-                        data.at[idx, "Ganancia/Pérdida"] = (valor_manual - row["Precio"]) * row["Cantidad"]
+        # Detectar activos sin precio actual
+        activos_sin_precio = data[
+            data["Precio Actual"].isna() | (data["Precio Actual"] == 0) | (data["Valor Actual"] == 0)
+        ]["Activo"].unique()
+
+        if len(activos_sin_precio) == 0:
+            st.success("✅ Todos los activos ya tienen precios actualizados.")
+        else:
+            precios_manual = {}
+            for activo in activos_sin_precio:
+                st.markdown("### 💰 Ingresar precio manual por activo (si falta precio actual)")
+                precios_manual[activo] = st.number_input(
+                    f"Ingresar precio manual actual para **{activo}**",
+                    min_value=0.0, format="%.2f", key=f"precio_manual_{activo}"
+                )
+
+            # Verificar si el usuario ya ingresó precios válidos para todos
+            todos_tienen_precio = all(precios_manual[activo] > 0 for activo in precios_manual)
+
+            if todos_tienen_precio:
+                for idx, row in data.iterrows():
+                    activo = row["Activo"]
+                    if activo in precios_manual:
+                        precio_manual = precios_manual[activo]
+                        if pd.isna(row.get("Precio Actual")) or row.get("Precio Actual", 0) == 0 or row.get("Valor Actual", 0) == 0:
+                            nuevos_valores = {
+                                "Precio Manual": precio_manual,
+                                "Precio Actual": precio_manual,
+                                "Valor Actual": row["Cantidad"] * precio_manual,
+                                "Ganancia/Pérdida": (precio_manual - row["Precio"]) * row["Cantidad"]
+                            }
+                            actualizar_activo_supabase(supabase_user, user_id, row["id"], nuevos_valores)
+
+                st.success("✅ Precios manuales actualizados automáticamente.")
+                data = obtener_activos_usuario(supabase_user, user_id)
+                st.rerun()
             else:
-                # Si ya hay un precio manual, ofrecer opción de actualizarlo
-                if pd.notna(row["Precio Manual"]):
-                    st.info(f"ℹ️ {row['Activo']} tiene un precio manual registrado. Puedes actualizarlo si lo deseas.")
-                    nuevo_valor = st.number_input(
-                        f"Actualizar precio manual para '{row['Activo']}' (actual: {row['Precio Manual']})",
-                        min_value=0.0,
-                        step=100.0,
-                        key=f"update_manual_{idx}"
-                    )
-                    if nuevo_valor > 0 and nuevo_valor != row["Precio Manual"]:
-                        data.at[idx, "Precio Manual"] = nuevo_valor
-                        data.at[idx, "Precio Actual"] = nuevo_valor
-                        data.at[idx, "Ganancia/Pérdida"] = (nuevo_valor - row["Precio"]) * row["Cantidad"]
+                if st.button("💾 Guardar precios manuales"):
+                    for idx, row in data.iterrows():
+                        activo = row["Activo"]
+                        if activo in precios_manual and precios_manual[activo] > 0:
+                            if pd.isna(row.get("Precio Actual")) or row.get("Precio Actual", 0) == 0 or row.get("Valor Actual", 0) == 0:
+                                precio_manual = precios_manual[activo]
+                                nuevos_valores = {
+                                    "Precio Manual": precio_manual,
+                                    "Precio Actual": precio_manual,
+                                    "Valor Actual": row["Cantidad"] * precio_manual,
+                                    "Ganancia/Pérdida": (precio_manual - row["Precio"]) * row["Cantidad"]
+                                }
+                                actualizar_activo_supabase(supabase_user, user_id, row["id"], nuevos_valores)
 
-        # Guardar el CSV actualizado con valores manuales
-        data.to_csv("portafolio.csv", index=False)
+                    st.success("✅ Precios manuales actualizados.")
+                    data = obtener_activos_usuario(supabase_user, user_id)
+                    st.rerun()
 
 
-        # Crear pestañas
-        tab1, tab2, tab3 = st.tabs(["📊 Resumen", "📈 Simulación","📋 Activos"])
+        # Tabs
+        tab1, tab2, tab3 = st.tabs(["📊 Resumen", "📈 Simulación", "📋 Activos"])
 
         with tab3:
             st.subheader("📋 Activos Registrados")
-            data_mostrar=data.copy()
-            # Formateo de moneda
-            for col in ["Precio","Precio Actual","Valor Compra", "Valor Actual", "Ganancia/Pérdida"]:
-                data_mostrar[col] = data_mostrar[col].map("${:,.2f}".format)
-            st.dataframe(data_mostrar)
+            mostrar = data.copy()
+            for col in ["Precio", "Precio Actual", "Valor Compra", "Valor Actual", "Ganancia/Pérdida"]:
+                if col in mostrar.columns:
+                    mostrar[col] = mostrar[col].map("${:,.2f}".format)
+            st.dataframe(mostrar)
 
             st.markdown("### ✏️ Editar Activo")
-            activos_disponibles = data["Activo"].astype(str) + " | " + data["Fecha"].dt.strftime("%Y-%m-%d")
+            activos_disponibles = data["Activo"].astype(str) + " | " + pd.to_datetime(data["Fecha"]).dt.strftime("%Y-%m-%d")
             seleccion = st.selectbox("Selecciona un activo para editar", activos_disponibles)
 
             if seleccion:
@@ -166,44 +214,45 @@ else:
                 activo = data.loc[idx]
 
                 with st.form("editar_activo"):
-                    nuevo_tipo = st.selectbox("Tipo", options=["Acción/ETF", "Cripto", "CETES", "Inmueble", "Otro"], index=["Acción/ETF", "Cripto", "CETES", "Inmueble", "Otro"].index(activo["Tipo"]))
+                    nuevo_tipo = st.selectbox("Tipo", ["Acción/ETF", "Cripto", "CETES", "Inmueble", "Otro"],
+                                             index=["Acción/ETF", "Cripto", "CETES", "Inmueble", "Otro"].index(activo["Tipo"]))
                     nuevo_nombre = st.text_input("Nombre del Activo", value=activo["Activo"])
-                    nueva_fecha = st.date_input("Fecha", value=activo["Fecha"].date())
-                    nueva_cantidad = st.number_input("Cantidad", value=float(activo["Cantidad"]), step=1.0)
-                    nuevo_precio = st.number_input("Precio de Compra", value=float(activo["Precio"]), step=1.0)
+                    nueva_fecha = st.date_input("Fecha", value=pd.to_datetime(activo["Fecha"]).date())
+                    nueva_cantidad = st.number_input("Cantidad", value=float(activo["Cantidad"]))
+                    nuevo_precio = st.number_input("Precio de Compra", value=float(activo["Precio"]))
                     nueva_plataforma = st.text_input("Plataforma", value=activo.get("Plataforma", ""))
-
+                    nuevo_sector=st.text_input("Sector", value=activo.get("Sector", ""))
                     guardar = st.form_submit_button("💾 Guardar cambios")
 
                     if guardar:
-                        data.loc[idx, "Tipo"] = nuevo_tipo
-                        data.loc[idx, "Activo"] = nuevo_nombre
-                        data.loc[idx, "Fecha"] = pd.to_datetime(nueva_fecha)
-                        data.loc[idx, "Cantidad"] = nueva_cantidad
-                        data.loc[idx, "Precio"] = nuevo_precio
-                        data.loc[idx, "Plataforma"] = nueva_plataforma
-
-                        data.to_csv("portafolio.csv", index=False)
-                        st.success("✅ Activo actualizado con éxito")
-                        st.rerun()
+                        actualizado = {
+                            "Tipo": nuevo_tipo,
+                            "Activo": nuevo_nombre,
+                            "Fecha": str(nueva_fecha),
+                            "Cantidad": nueva_cantidad,
+                            "Precio": nuevo_precio,
+                            "Plataforma": nueva_plataforma,
+                            "Sector":nuevo_sector
+                        }
+                        resultado = actualizar_activo_supabase(supabase_user, user_id, activo["id"], actualizado)
+                        if resultado.get("success"):
+                            st.success("✅ Activo actualizado con éxito")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ No se pudo actualizar el activo: {resultado.get('error')}")
 
             st.markdown("### 🗑️ Eliminar Activo")
-            seleccion_borrar = st.selectbox(
-                "Selecciona un activo para eliminar",
-                activos_disponibles,
-                key="select_eliminar"
-            )
+            seleccion_borrar = st.selectbox("Selecciona un activo para eliminar", activos_disponibles, key="select_eliminar")
 
             if seleccion_borrar:
                 idx_borrar = activos_disponibles[activos_disponibles == seleccion_borrar].index[0]
                 activo_borrar = data.loc[idx_borrar]
 
-                st.warning(f"¿Estás seguro de que deseas eliminar **{activo_borrar['Activo']}** registrado el **{activo_borrar['Fecha'].date()}**?")
-                confirmar_borrado = st.button("❌ Confirmar eliminación")
+                st.warning(f"¿Estás seguro de eliminar **{activo_borrar['Activo']}** del **{pd.to_datetime(activo_borrar['Fecha']).date()}**?")
+                confirmar = st.button("❌ Confirmar eliminación")
 
-                if confirmar_borrado:
-                    data = data.drop(idx_borrar).reset_index(drop=True)
-                    data.to_csv("portafolio.csv", index=False)
+                if confirmar:
+                    eliminar_activo_supabase(supabase_user,user_id, activo_borrar["id"])
                     st.success("✅ Activo eliminado con éxito.")
                     st.rerun()
 
