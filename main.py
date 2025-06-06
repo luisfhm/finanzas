@@ -11,15 +11,24 @@ from supabase import create_client
 from dotenv import load_dotenv
 import os
 import jwt
+from streamlit_cookies_manager import EncryptedCookieManager
+
+
+st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
 
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+cookies = EncryptedCookieManager(
+    prefix="portfolio_",
+    password=os.getenv("COOKIE_SECRET", "fallback_inseguro")
+)
+if not cookies.ready():
+    st.stop()
 
-st.set_page_config(page_title="📊 Portfolio Tracker", layout="centered")
+supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # --- Helper para manejar sesión persistente ---
 def guardar_token_en_session(token, user):
@@ -30,12 +39,23 @@ def limpiar_sesion():
     for k in ["access_token", "user"]:
         if k in st.session_state:
             del st.session_state[k]
+    cookies["access_token"] = ""
+    cookies["user_email"] = ""
+    cookies.save()
+
+
 
 # --- Manejar inicio con token guardado ---
 if "access_token" not in st.session_state:
     st.session_state["access_token"] = None
 if "user" not in st.session_state:
     st.session_state["user"] = None
+
+if "access_token" not in st.session_state or not st.session_state["access_token"]:
+    # Intentar recuperar de cookie
+    if cookies.get("access_token"):
+        st.session_state["access_token"] = cookies.get("access_token")
+        st.session_state["user"] = type("User", (), {"email": cookies.get("user_email")})()
 
 # --- Mostrar pantalla login/registro si no hay usuario ---
 if not st.session_state["user"]:
@@ -49,6 +69,9 @@ if not st.session_state["user"]:
                 res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if res.user:
                     guardar_token_en_session(res.session.access_token, res.user)
+                    cookies["access_token"] = res.session.access_token
+                    cookies["user_email"] = email
+                    cookies.save()
                     st.success("✅ Sesión iniciada")
                     st.rerun()
                 else:
