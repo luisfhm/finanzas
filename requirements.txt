@@ -9,3 +9,4 @@ PyYAML
 streamlit-authenticator
 supabase
 dotenv
+streamlit_cookies_manager 
