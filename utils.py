@@ -210,3 +210,12 @@ def create_authenticated_client(url, anon_key, access_token):
         postgrest_client_timeout = 10  # en segundos, por ejemplo
 
     return create_client(url, anon_key, options=Options())
+
+import time
+
+def token_expirado(token):
+    try:
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        return decoded.get("exp", 0) < time.time()
+    except Exception:
+        return True

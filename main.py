@@ -261,6 +261,35 @@ else:
 
         with tab1:
             show_summary(data)
+            # --- OPCIONAL: Actualización manual para activos no automáticos ---
+            tipos_no_automaticos = ["CETES", "Inmueble", "Otro"]
+            activos_no_auto = data[data["Tipo"].isin(tipos_no_automaticos)]
+
+            if not activos_no_auto.empty:
+                st.markdown("### ✏️ Actualizar manualmente precios de activos no automáticos")
+
+                for idx, row in activos_no_auto.iterrows():
+                    nuevo_precio = st.number_input(
+                        f"Nuevo precio para {row['Activo']} ({row['Tipo']})",
+                        min_value=0.0,
+                        value=float(row["Precio Actual"]) if not pd.isna(row["Precio Actual"]) else float(row["Precio"]),
+                        format="%.2f",
+                        key=f"manual_update_{row['id']}"
+                    )
+
+                    if st.button(f"Actualizar precio de {row['Activo']}", key=f"btn_manual_{row['id']}"):
+                        nuevos_valores = {
+                            "Precio Manual": nuevo_precio,
+                            "Precio Actual": nuevo_precio,
+                            "Valor Actual": nuevo_precio * row["Cantidad"],
+                            "Ganancia/Pérdida": (nuevo_precio - row["Precio"]) * row["Cantidad"]
+                        }
+                        resultado = actualizar_activo_supabase(supabase_user, user_id, row["id"], nuevos_valores)
+                        if resultado.get("success"):
+                            st.success(f"✅ Precio de {row['Activo']} actualizado.")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Error al actualizar {row['Activo']}: {resultado.get('error')}")
 
     else:
         st.warning("No hay datos disponibles. Por favor, agrega activos en la barra lateral.")
