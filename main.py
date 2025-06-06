@@ -291,28 +291,49 @@ else:
             if not activos_no_auto.empty:
                 st.markdown("### ✏️ Actualizar manualmente precios de activos no automáticos")
 
-                for idx, row in activos_no_auto.iterrows():
-                    nuevo_precio = st.number_input(
-                        f"Nuevo precio para {row['Activo']} ({row['Tipo']})",
-                        min_value=0.0,
-                        value=float(row["Precio Actual"]) if not pd.isna(row["Precio Actual"]) else float(row["Precio"]),
-                        format="%.2f",
-                        key=f"manual_update_{row['id']}"
+                activos_unicos = activos_no_auto["Activo"].unique()
+
+                for activo in activos_unicos:
+                    # Obtengo las filas para ese activo
+                    filas_activo = activos_no_auto[activos_no_auto["Activo"] == activo]
+
+                    # Para valor inicial del input, puedo tomar el primer registro que tenga Precio Actual o Precio
+                    first_row = filas_activo.iloc[0]
+                    valor_inicial = (
+                        float(first_row["Precio Actual"]) if not pd.isna(first_row["Precio Actual"])
+                        else float(first_row["Precio"])
                     )
 
-                    if st.button(f"Actualizar precio de {row['Activo']}", key=f"btn_manual_{row['id']}"):
-                        nuevos_valores = {
-                            "Precio Manual": nuevo_precio,
-                            "Precio Actual": nuevo_precio,
-                            "Valor Actual": nuevo_precio * row["Cantidad"],
-                            "Ganancia/Pérdida": (nuevo_precio - row["Precio"]) * row["Cantidad"]
-                        }
-                        resultado = actualizar_activo_supabase(supabase_user, user_id, row["id"], nuevos_valores)
-                        if resultado.get("success"):
-                            st.success(f"✅ Precio de {row['Activo']} actualizado.")
+                    nuevo_precio = st.number_input(
+                        f"Nuevo precio para {activo}",
+                        min_value=0.0,
+                        value=valor_inicial,
+                        format="%.2f",
+                        key=f"manual_update_{activo}"
+                    )
+
+                    if st.button(f"Actualizar precio de {activo}", key=f"btn_manual_{activo}"):
+                        errores = []
+                        exito = True
+
+                        for idx, row in filas_activo.iterrows():
+                            nuevos_valores = {
+                                "Precio Manual": nuevo_precio,
+                                "Precio Actual": nuevo_precio,
+                                "Valor Actual": nuevo_precio * row["Cantidad"],
+                                "Ganancia/Pérdida": (nuevo_precio - row["Precio"]) * row["Cantidad"]
+                            }
+                            resultado = actualizar_activo_supabase(supabase_user, user_id, row["id"], nuevos_valores)
+
+                            if not resultado.get("success"):
+                                errores.append(f"{row['Activo']} (id {row['id']}): {resultado.get('error')}")
+                                exito = False
+
+                        if exito:
+                            st.success(f"✅ Precio de {activo} actualizado para todas las posiciones.")
                             st.rerun()
                         else:
-                            st.error(f"❌ Error al actualizar {row['Activo']}: {resultado.get('error')}")
+                            st.error("❌ Error al actualizar algunos activos:\n" + "\n".join(errores))
 
     else:
         st.warning("No hay datos disponibles. Por favor, agrega activos en la barra lateral.")
